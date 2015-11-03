@@ -162,7 +162,16 @@
                     
       
                                             
-                  
+1. 1个接受线程(accept thread)  接收新的链接请求 并分发到 selector 线程 (selector 主要是 应用了 NIO non-blocking 模式）
+    但non blocking 模式和 linux network 下的 non-blocking 不一样 (linux 下的 non-blocking 是用户不断的发送 recvfrom 检测 是否准备好数据,
+    不论数据是否准备好都会立刻返回)
+    而上面 selector 对映的其实事 io mutil 模式 ，是用户调用selector/epoll 函数 selector 同时可以监视多个 socket 只要有一个socket 数据准备好后
+    立即返回，并处理 kernel到用户内存的复制 然后返回给 用户。
+2. 1-N selector 线程, 每个 selector 线程处理较大 数量的 链接(connection) ， 现在的瓶颈在 平台的select函数 上
+3. 0-M 个 socket io worker线程，执行基本的 read，write。如果配置设置成0个 worker 线程，那么 selector 线程 直接做 io的 read，write。
+4. 1 链接(connection) 过期线程， 关闭闲置的链接。 其中没有建立session 的链接，是必须被终止的。
+
+    + 典型的情况 在32 核机器上， 1 接收accept thread线程， 1 检查过期的线程， 4个selector ， 64个worker 线程
     
                 
                 
