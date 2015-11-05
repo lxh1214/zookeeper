@@ -24,7 +24,7 @@
                 dataDir 必填项
     + dataLogDir : 事务日志输出路径， 尽量给事务日志给一个单独的磁盘或者挂载点, 对zk的性能会有所提高.
                     事务日志输出时是顺序且同步写到磁盘中， 只有从磁盘写完日志后才会触发follower 和 leader发的回调事务确认消息.
-    + maxClientCnxns : 对单个zk服务可链接的 客户端数量限制（指的是ip的限制） 如果为 0 则不限制
+    + maxClientCnxns : 对单个zk服务可链接的 客户端数量限制（指的是ip的限制） 如果为 0 则不限制   默认为 60
     + autopurge.purgeIntreval : 3.4.0 后zk提供自动清理事务日志和快照的功能。 这里是以小时为单位。如果配置为0 则不做清理.
                                 可通过bin/zkCleanup.sh 手动清理.
     + autopurge.snapRetainCount : 快照文件保留数 (默认为3）(如果参数没有配置或者小于3的话则取默认值 3)
@@ -159,19 +159,32 @@
                     然后再取 retainSnapFiles 最后一个 file 既 retainSnapFiles最小的一个 数字这一段 表示zxid,
                     删除所有 比zxid 小的 snapshot.xxx的文件, zxid 也是事务日志文件log.30a3 的数字对应 
                     如上 删除log.zxid 小于 zxid 所有log 文件
-                    
-      
-                                            
-1. 1个接受线程(accept thread)  接收新的链接请求 并分发到 selector 线程 (selector 主要是 应用了 NIO non-blocking 模式）
-    但non blocking 模式和 linux network 下的 non-blocking 不一样 (linux 下的 non-blocking 是用户不断的发送 recvfrom 检测 是否准备好数据,
-    不论数据是否准备好都会立刻返回)
-    而上面 selector 对映的其实事 io mutil 模式 ，是用户调用selector/epoll 函数 selector 同时可以监视多个 socket 只要有一个socket 数据准备好后
-    立即返回，并处理 kernel到用户内存的复制 然后返回给 用户。
-2. 1-N selector 线程, 每个 selector 线程处理较大 数量的 链接(connection) ， 现在的瓶颈在 平台的select函数 上
-3. 0-M 个 socket io worker线程，执行基本的 read，write。如果配置设置成0个 worker 线程，那么 selector 线程 直接做 io的 read，write。
-4. 1 链接(connection) 过期线程， 关闭闲置的链接。 其中没有建立session 的链接，是必须被终止的。
+ 
+##ServerCnxnFactory zookeeper 核心##
+           
+###NIOServerCnxnFactory ServerCnxnFactory NIO 实现###
+  * 典型的情况 在32 核机器上， 1 接收accept thread线程， 1 检查过期的线程， 4个selector ， 64个worker 线程
+    1. 1个接受线程(accept thread)  接收新的链接请求 并分发到 selector 线程 (selector 主要是 应用了 NIO non-blocking 模式）
+        但non blocking 模式和 linux network 下的 non-blocking 不一样 (linux 下的 non-blocking 是用户不断的发送 recvfrom 检测 是否准备好数据,
+        不论数据是否准备好都会立刻返回)
+        而上面 selector 对映的其实事 io mutil 模式 ，是用户调用selector/epoll 函数 selector 同时可以监视多个 socket 只要有一个socket 数据准备好后
+        立即返回，并处理 kernel到用户内存的复制 然后返回给 用户。
+    2. 1-N selector 线程, 每个 selector 线程处理较大 数量的 链接(connection) ， 现在的瓶颈在 平台的select函数 上
+    3. 0-M 个 socket io worker线程，执行基本的 read，write。如果配置设置成0个 worker 线程，那么 selector 线程 直接做 io的 read，write。
+    4. 1 链接(connection) 过期线程， 关闭闲置的链接。 其中没有建立session 的链接，是必须被终止的。
+     
+  * connect过期时间间隔
+    sessionlessCnxnTimeOut "zookeeper.nio.sessionlessCnxnTimeout" 默认为 10 秒 
+  
+  * selector 线程数量(NIO Selector 数量)
+    numSelectorThreads "zookeeper.nio.numSelectorThreads" 不能小于1 . selector thread 数量 默认情况下 机器core 处理器数量
+                                coreNum/2 开平方后与1的最大值 -> 32/2 -> 16 sqr -> 4        max(4,1)  
+  * worker 线程数量
+    numWorkerThreads "zookeeper.nio.numWorkerThreads" 默认为 cores *　2 ->cores 32  * 2 -> 64
+     
+  * worker 关闭超时时间 (毫秒)
+    workerShutdownTimeoutMS "ZOOKEEPER_NIO_SHUTDOWN_TIMEOUT" 默认为 5000
 
-    + 典型的情况 在32 核机器上， 1 接收accept thread线程， 1 检查过期的线程， 4个selector ， 64个worker 线程
     
                 
                 

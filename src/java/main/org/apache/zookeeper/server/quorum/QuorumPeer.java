@@ -175,7 +175,7 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
                throw new ConfigException("Unrecognised peertype: " + s);
             }
         }
-
+        //x.x.x.x:port1:port2
         private static String[] splitWithLeadingHostname(String s)
                 throws ConfigException
         {
@@ -204,7 +204,12 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
             // LOG.warn("sid = " + sid + " addressStr = " + addressStr);
             this.id = sid;
             String serverClientParts[] = addressStr.split(";");
+
+            //x.x.x.x:port1:port2
+            // serverClientParts = {"x.x.x.x:port1:port2"}
             String serverParts[] = splitWithLeadingHostname(serverClientParts[0]);
+
+            //serverParts = {x.x.x.x, port1, port2}
             if ((serverClientParts.length > 2) || (serverParts.length < 3)
                     || (serverParts.length > 4)) {
                 throw new ConfigException(addressStr + wrongFormat);
@@ -229,13 +234,15 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
             }
 
             // server_config should be either host:port:port or host:port:port:type
-            try {
+            try {//serverParts = {x.x.x.x, port1, port2}
+                // addr follower 和 leader  通信的端口 (socket)
                 addr = new InetSocketAddress(serverParts[0],
                         Integer.parseInt(serverParts[1]));
             } catch (NumberFormatException e) {
                 throw new ConfigException("Address unresolved: " + serverParts[0] + ":" + serverParts[1]);
             }
             try {
+                // 选举的参与选举的端口 (socket)
                 electionAddr = new InetSocketAddress(serverParts[0], 
                         Integer.parseInt(serverParts[2]));
             } catch (NumberFormatException e) {
@@ -346,6 +353,7 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
             }
         }
 
+        //排除指定的 ip 地址 addrs 里 null 或者 addr.getAddress() 为 null 或者 0， 0.0.0.0, 127.0.0.1, localhost
         private List<InetSocketAddress> excludedSpecialAddresses(List<InetSocketAddress> addrs) {
             List<InetSocketAddress> included = new ArrayList<InetSocketAddress>();
             InetAddress wcAddr = new InetSocketAddress(0).getAddress();
