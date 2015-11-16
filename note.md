@@ -87,6 +87,16 @@
         
     + backup-conf 文件
         如果是分布式 也就是集群的配置  需要备份当地zoo.cfg文件 且名字为 zoo.cfg.bak
+    + dynamicConfigFile 
+        对应conf 文件里需要变动的属性配置可以下面这样配置
+           dynamicConfigFile=./dyn.cfg
+           例如 分布式的 
+                   server.1=127.0.0.1:2222:2223:participant;2181
+                   server.2=127.0.0.1:3333:3334:participant;2182
+                   server.3=127.0.0.1:4444:4445:participant;2183             
+    + snapCount
+        事务多少次后记录一次快照  默认是100000
+      
                         
    * QuorumServer的生成策略
     
@@ -163,6 +173,11 @@
 ##ServerCnxnFactory zookeeper 核心##
            
 ###NIOServerCnxnFactory ServerCnxnFactory NIO 实现###
+
+  * 初始化过程 (有静态代买块)
+    1. 设置 Thread 为捕获的异常 -> 做统一处理
+    2. directBufferBytes 设置 IO buffer数组的大小 即是 channel buffer 的大小 "zookeeper.nio.directBufferBytes"  默认为 64 * 1024
+     
   * 典型的情况 在32 核机器上， 1 接收accept thread线程， 1 检查过期的线程， 4个selector ， 64个worker 线程
     1. 1个接受线程(accept thread)  接收新的链接请求 并分发到 selector 线程 (selector 主要是 应用了 NIO non-blocking 模式）
         但non blocking 模式和 linux network 下的 non-blocking 不一样 (linux 下的 non-blocking 是用户不断的发送 recvfrom 检测 是否准备好数据,
@@ -175,18 +190,41 @@
      
   * connect过期时间间隔
     sessionlessCnxnTimeOut "zookeeper.nio.sessionlessCnxnTimeout" 默认为 10 秒 
-  
+    
+    1. 根据 sessionLessCnxnTimeOut 时间间隔为参数 创建  expiryQueue = ExpiryQueue(sessionlessCnxnTimeOut);
+        expiryQueue 过期队列 
   * selector 线程数量(NIO Selector 数量)
-    numSelectorThreads "zookeeper.nio.numSelectorThreads" 不能小于1 . selector thread 数量 默认情况下 机器core 处理器数量
+    1. numSelectorThreads "zookeeper.nio.numSelectorThreads" 不能小于1 . selector thread 数量 默认情况下 机器core 处理器数量
                                 coreNum/2 开平方后与1的最大值 -> 32/2 -> 16 sqr -> 4        max(4,1)  
+                                
+    2. 根据numSelectorThreads 数量创建 selectorThreads Set集合(SelectorThread)
+        
+       + 根据SelectorThreads Set 生成一个 AcceptThread 
+         AcceptThread 
+         
   * worker 线程数量
     numWorkerThreads "zookeeper.nio.numWorkerThreads" 默认为 cores *　2 ->cores 32  * 2 -> 64
      
   * worker 关闭超时时间 (毫秒)
     workerShutdownTimeoutMS "ZOOKEEPER_NIO_SHUTDOWN_TIMEOUT" 默认为 5000
 
+  * expirerThread  链接过期线程 ConnectionExpirerThread
+##ZookeeperThread 类 ##
     
-                
+  * 所有zookeeper内部线程都集成这个
+  * 主要是 实现 UncaughtExceptionHandler 接口 打印未捕获异常的 线程 threadName 以及 异常
+  
+  ###AbstractSelectThread zookeeperThread的子类###
+  
+    1. 设置成守护线程 （既 如果jvm关闭 即使该线程在运行也会关闭) 
+    2.  Selector 操作 close, open
+    3. 清除 SelectionKey -> 对处理过的SelectionKey  cancel():
+    4. 关闭 SocketChannel -> close -> socketChannel.getSocket() - socket -> socket.shutdownOutput, socket.shutdownInput, socket.close, socketChannel.close
+    
+  ###AcceptThread 为 AbstractSelectThread 的子类###
+  
+    
+    
                 
     
    
